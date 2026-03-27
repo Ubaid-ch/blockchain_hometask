@@ -1,4 +1,6 @@
 const crypto = require('crypto');
+const EC = require('elliptic').ec;
+const ec = new EC('secp256k1');
 
 class Block {
   constructor(timestamp, transactions, previousHash = '') {
@@ -66,23 +68,23 @@ class Transaction {
     this.signature = sig.toDER('hex');
   }
 
-  isValid() {
-    if (this.fromAddress === null) return true;
+ isValid() {
+    if (this.fromAddress === null) return true; // Mining reward
 
     if (!this.signature || this.signature.length === 0) {
-      return false;  // removed bypass for task 1
+      return false;
     }
 
-   try {
-    const EC = require('elliptic').ec;
-    const ec = new EC('secp256k1');
-
-    const publicKey = ec.keyFromPublic(this.fromAddress, 'hex');
-    return publicKey.verify(this.calculateHash(), this.signature);
-  } catch (err) {
-    return false;
+    try {
+      // Import the hex public key (which is the fromAddress)
+      const key = ec.keyFromPublic(this.fromAddress, 'hex');
+      return key.verify(this.calculateHash(), this.signature);
+    } catch (err) {
+      console.error("Verification error:", err);
+      return false;
+    }
   }
-  }
+  
 }
 
 class Blockchain {

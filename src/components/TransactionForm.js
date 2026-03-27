@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import './TransactionForm.css';
 import { addTransaction } from '../api/blockchain.api';
+import { ec as EC } from 'elliptic';
+const ec = new EC('secp256k1');
 
 const TransactionForm = ({ privateKey, publicKey, onTransactionAdded }) => {
   const [formData, setFormData] = useState({
@@ -26,45 +28,25 @@ const TransactionForm = ({ privateKey, publicKey, onTransactionAdded }) => {
   };
 
   // Sign transaction using Web Crypto API with hex private key
-  const signTransaction = async (tx) => {
-    if (!privateKey) throw new Error('No private key available. Generate a wallet first.');
-    
-    // Convert hex private key to buffer
-    const privateKeyHex = privateKey;
-    const privateKeyBuffer = Buffer.from(privateKeyHex, 'hex');
-    
-    const hashString = calculateHash(tx);
-    const encoder = new TextEncoder();
-    const hashBuffer = encoder.encode(hashString);
-    
-    try {
-      // Import the private key for signing
-      const cryptoKey = await window.crypto.subtle.importKey(
-        'pkcs8',
-        privateKeyBuffer,
-        { name: 'ECDSA', namedCurve: 'P-256' },
-        false,
-        ['sign']
-      );
-      
-      const signatureBuffer = await window.crypto.subtle.sign(
-        { name: 'ECDSA', hash: { name: 'SHA-256' } },
-        cryptoKey,
-        hashBuffer
-      );
-      
-      // Convert signature to hex string
-      const signatureHex = Array.from(new Uint8Array(signatureBuffer))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
-      
-      return signatureHex;
-    } catch (error) {
-      console.error('Signing error:', error);
-      throw new Error('Failed to sign transaction. Private key format may be incompatible.');
-    }
-  };
+ 
+// Inside TransactionForm.js
 
+const signTransaction = async (tx) => {
+  if (!privateKey) throw new Error('No private key available.');
+
+  try {
+    // 1. Initialize key from Hex
+    const key = ec.keyFromPrivate(privateKey, 'hex'); 
+    
+    // 2. Hash the data (must match backend exactly)
+    const hash = tx.fromAddress + tx.toAddress + tx.amount + tx.timestamp;
+    
+    // 3. Sign and return DER Hex
+    return key.sign(hash).toDER('hex');
+  } catch (error) {
+    throw new Error('Signing failed: ' + error.message);
+  }
+};
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);

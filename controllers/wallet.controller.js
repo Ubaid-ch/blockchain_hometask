@@ -1,26 +1,21 @@
-const crypto = require('crypto');
-const { sendSuccess, sendError } = require('../utils/response');
+import crypto from 'crypto';
+import { sendSuccess, sendError } from '../utils/response.js';
 
-const generateWallet = (req, res) => {
+export const generateWallet = (req, res) => {
   try {
-    // Generate secp256k1 key pair using Node.js built-in crypto
-    const { privateKey, publicKey } = crypto.generateKeyPairSync('ec', {
+    const { publicKey, privateKey } = crypto.generateKeyPairSync('ec', {
       namedCurve: 'secp256k1',
-      publicKeyEncoding: { type: 'spki', format: 'der' },
-      privateKeyEncoding: { type: 'pkcs8', format: 'der' }
     });
 
-    // Convert to hex (common format for blockchain addresses)
-    const publicKeyHex = publicKey.toString('hex');
-    const privateKeyHex = privateKey.toString('hex');
+    // Export to DER buffer, then to Hex string
+    const publicKeyHex = publicKey.export({ type: 'spki', format: 'der' }).toString('hex');
+    const privateKeyHex = privateKey.export({ type: 'pkcs8', format: 'der' }).toString('hex');
 
     return sendSuccess(res, {
-      publicKey: publicKeyHex,   
-      privateKey: privateKeyHex  
+      publicKey: publicKeyHex,
+      privateKey: privateKeyHex
     });
   } catch (error) {
     return sendError(res, 'Failed to generate wallet', 500);
   }
 };
-
-module.exports = { generateWallet };

@@ -44,11 +44,11 @@ const Wallet = ({ onWalletGenerated }) => {
       
       // Fetch initial balance
       try {
-        const bal = await fetchBalance(pubKey);
-        console.log('💰 Initial balance:', bal);
-        setBalance(bal);
-      } catch (balanceErr) {
-        console.warn('Could not fetch initial balance:', balanceErr);
+        const balRes = await fetchBalance(pubKey);
+        // Drill down: axios.data -> backend.data -> balance
+        const actualBalance = balRes.data?.data?.balance ?? 0; 
+        setBalance(actualBalance); 
+      } catch (err) {
         setBalance(0);
       }
       
@@ -62,21 +62,20 @@ const Wallet = ({ onWalletGenerated }) => {
   };
 
   useEffect(() => {
-    let interval;
-    if (publicKey) {
-      interval = setInterval(async () => {
-        try {
-          const bal = await fetchBalance(publicKey);
-          setBalance(bal);
-        } catch (err) {
-          console.error('Balance fetch error:', err);
-        }
-      }, 5000);
-      return () => {
-        if (interval) clearInterval(interval);
-      };
-    }
-  }, [publicKey]);
+  let interval;
+      if (publicKey) {
+        interval = setInterval(async () => {
+          try {
+            const balRes = await fetchBalance(publicKey);
+            const actualBalance = balRes.data?.data?.balance ?? 0;
+            setBalance(actualBalance);
+          } catch (err) {
+            console.error('Balance fetch error:', err);
+          }
+        }, 5000);
+        return () => clearInterval(interval);
+      }
+    }, [publicKey]);
 
   const formatAddress = (address) => {
     if (!address) return '';
