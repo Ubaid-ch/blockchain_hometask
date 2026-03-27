@@ -2,64 +2,169 @@ import React, { useState } from 'react';
 import './TransactionForm.css';
 import { addTransaction } from '../api/blockchain.api';
 
-const TransactionForm = ({ onTransactionAdded }) => {
+const TransactionForm = ({ privateKey, publicKey, onTransactionAdded }) => {
   const [formData, setFormData] = useState({
-    fromAddress: '',
     toAddress: '',
     amount: '',
   });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [messageType, setMessageType] = useState('');
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
     setMessage('');
+    setMessageType('');
+  };
+
+  // Helper: Calculate transaction hash (MUST match backend exactly)
+  const calculateHash = (tx) => {
+    return tx.fromAddress +
+           tx.toAddress +
+           tx.amount +
+           (tx.timestamp || Date.now());
+  };
+
+  // Sign transaction using Web Crypto API with hex private key
+  const signTransaction = async (tx) => {
+    if (!privateKey) throw new Error('No private key available. Generate a wallet first.');
+    
+    // Convert hex private key to buffer
+    const privateKeyHex = privateKey;
+    const privateKeyBuffer = Buffer.from(privateKeyHex, 'hex');
+    
+    const hashString = calculateHash(tx);
+    const encoder = new TextEncoder();
+    const hashBuffer = encoder.encode(hashString);
+    
+    try {
+      // Import the private key for signing
+      const cryptoKey = await window.crypto.subtle.importKey(
+        'pkcs8',
+        privateKeyBuffer,
+        { name: 'ECDSA', namedCurve: 'P-256' },
+        false,
+        ['sign']
+      );
+      
+      const signatureBuffer = await window.crypto.subtle.sign(
+        { name: 'ECDSA', hash: { name: 'SHA-256' } },
+        cryptoKey,
+        hashBuffer
+      );
+      
+      // Convert signature to hex string
+      const signatureHex = Array.from(new Uint8Array(signatureBuffer))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+      
+      return signatureHex;
+    } catch (error) {
+      console.error('Signing error:', error);
+      throw new Error('Failed to sign transaction. Private key format may be incompatible.');
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setMessage('');
+    setMessageType('');
+
+    if (!privateKey || !publicKey) {
+      setMessage('Please generate a wallet first!');
+      setMessageType('error');
+      setLoading(false);
+      return;
+    }
+
+    if (!formData.toAddress || !formData.amount) {
+      setMessage('Please fill all fields');
+      setMessageType('error');
+      setLoading(false);
+      return;
+    }
+
+    if (Number(formData.amount) <= 0) {
+      setMessage('Amount must be greater than 0');
+      setMessageType('error');
+      setLoading(false);
+      return;
+    }
+
+    if (formData.toAddress === publicKey) {
+      setMessage('Cannot send transaction to yourself');
+      setMessageType('error');
+      setLoading(false);
+      return;
+    }
 
     try {
-      await addTransaction(formData.fromAddress, formData.toAddress, formData.amount);
-      setMessage('Transaction added successfully!');
-      setFormData({ fromAddress: '', toAddress: '', amount: '' });
-      onTransactionAdded();
+      const timestamp = Date.now();
+      const txData = {
+        fromAddress: publicKey,
+        toAddress: formData.toAddress,
+        amount: Number(formData.amount),
+        timestamp,
+      };
+
+      // Sign the transaction client-side
+      const signature = await signTransaction(txData);
+
+      const signedTransaction = {
+        ...txData,
+        signature,
+      };
+
+      // Send the full signed object
+      await addTransaction(signedTransaction);
+
+      setMessage('✓ Transaction added and signed successfully!');
+      setMessageType('success');
+      setFormData({ toAddress: '', amount: '' });
+      
+      if (onTransactionAdded) {
+        onTransactionAdded();
+      }
     } catch (err) {
+      console.error('Transaction error:', err);
       setMessage(err.message || 'Failed to add transaction');
+      setMessageType('error');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="transaction-form">
-      <h2 className="panel-title">Create Transaction</h2>
+    <div className="transaction-card">
+      <h2 className="card-title">📝 Create Transaction</h2>
       
+      {!privateKey ? (
+        <div className="warning-box">
+          <span className="warning-icon">⚠️</span>
+          <p>Generate a wallet first to send transactions.</p>
+        </div>
+      ) : (
+        <div className="info-box">
+          <span className="info-icon">🔐</span>
+          <p>
+            Signing with wallet: 
+            <strong> {publicKey?.slice(0, 10)}...{publicKey?.slice(-6)}</strong>
+          </p>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit}>
         <div className="form-group">
-          <label htmlFor="fromAddress">From Address</label>
-          <input
-            type="text"
-            id="fromAddress"
-            name="fromAddress"
-            value={formData.fromAddress}
-            onChange={handleChange}
-            placeholder="e.g., address1"
-            required
-          />
-        </div>
-        
-        <div className="form-group">
-          <label htmlFor="toAddress">To Address</label>
+          <label htmlFor="toAddress">Recipient Address</label>
           <input
             type="text"
             id="toAddress"
             name="toAddress"
             value={formData.toAddress}
             onChange={handleChange}
-            placeholder="e.g., address2"
+            placeholder="Enter recipient's public key / address"
+            disabled={!privateKey}
             required
           />
         </div>
@@ -72,21 +177,30 @@ const TransactionForm = ({ onTransactionAdded }) => {
             name="amount"
             value={formData.amount}
             onChange={handleChange}
-            placeholder="e.g., 100"
+            placeholder="Enter amount to send"
             step="0.01"
             min="0"
+            disabled={!privateKey}
             required
           />
         </div>
         
         {message && (
-          <div className={`form-message ${message.includes('success') ? 'success' : 'error'}`}>
+          <div className={`message-box ${messageType}`}>
             {message}
           </div>
         )}
         
-        <button type="submit" className="submit-button" disabled={loading}>
-          {loading ? 'Adding...' : 'Add Transaction'}
+        <button 
+          type="submit" 
+          className={`submit-btn ${(!privateKey || loading) ? 'disabled' : ''}`}
+          disabled={!privateKey || loading}
+        >
+          {loading ? (
+            <span className="loading-text">⏳ Signing & Adding...</span>
+          ) : (
+            '✍️ Sign & Add Transaction'
+          )}
         </button>
       </form>
     </div>

@@ -13,8 +13,9 @@ export const fetchPendingTransactions = () =>
 export const fetchAllTransactions = () =>
   client.get(ENDPOINTS.TRANSACTIONS_ALL);
 
-export const addTransaction = (fromAddress, toAddress, amount) =>
-  client.post(ENDPOINTS.TRANSACTIONS, { fromAddress, toAddress, amount });
+//updated for task 1
+export const addTransaction = (signedTx) =>
+  client.post(ENDPOINTS.TRANSACTIONS, signedTx); 
 
 export const mineBlock = (miningRewardAddress = 'miner1') =>
   client.post(ENDPOINTS.MINE, { miningRewardAddress });
@@ -27,3 +28,6 @@ export const fetchDashboard = () =>
     chainData,
     statsData,
   }));
+
+export const createWallet = () => client.post(ENDPOINTS.WALLET).then(res => res.data);
+

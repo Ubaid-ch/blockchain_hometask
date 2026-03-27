@@ -70,25 +70,18 @@ class Transaction {
     if (this.fromAddress === null) return true;
 
     if (!this.signature || this.signature.length === 0) {
-      return true;
+      return false;  // removed bypass for task 1
     }
 
-    try {
-      const publicKey = crypto.createPublicKey({
-        key: Buffer.from(this.fromAddress, 'hex'),
-        format: 'der',
-        type: 'spki',
-      });
+   try {
+    const EC = require('elliptic').ec;
+    const ec = new EC('secp256k1');
 
-      return crypto.verify(
-        null,
-        Buffer.from(this.calculateHash()),
-        publicKey,
-        Buffer.from(this.signature, 'hex')
-      );
-    } catch {
-      return false;
-    }
+    const publicKey = ec.keyFromPublic(this.fromAddress, 'hex');
+    return publicKey.verify(this.calculateHash(), this.signature);
+  } catch (err) {
+    return false;
+  }
   }
 }
 
