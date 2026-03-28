@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import './TransactionForm.css';
 import { addTransaction } from '../api/blockchain.api';
-import { ec as EC } from 'elliptic';
-const ec = new EC('secp256k1');
+import SHA256 from 'crypto-js/sha256';
+import * as elliptic from 'elliptic';
+const EC = new elliptic.ec('secp256k1');
+
 
 const TransactionForm = ({ privateKey, publicKey, onTransactionAdded }) => {
   const [formData, setFormData] = useState({
@@ -19,35 +21,43 @@ const TransactionForm = ({ privateKey, publicKey, onTransactionAdded }) => {
     setMessageType('');
   };
 
-  // Helper: Calculate transaction hash (MUST match backend exactly)
-  const calculateHash = (tx) => {
-    return tx.fromAddress +
-           tx.toAddress +
-           tx.amount +
-           (tx.timestamp || Date.now());
-  };
 
-  // Sign transaction using Web Crypto API with hex private key
- 
-// Inside TransactionForm.js
+const calculateHash = async (fromAddress, toAddress, amount, timestamp) => {
+  const message = fromAddress + toAddress + amount + timestamp;
+  const encoder = new TextEncoder();
+  const data = encoder.encode(message);
 
-const signTransaction = async (tx) => {
-  if (!privateKey) throw new Error('No private key available.');
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+};
+
+const signTransaction = async (txData) => {
+  if (!privateKey) {
+    throw new Error('No private key available. Generate wallet first.');
+  }
 
   try {
-    // 1. Initialize key from Hex
-    const key = ec.keyFromPrivate(privateKey, 'hex'); 
-    
-    // 2. Hash the data (must match backend exactly)
-    const hash = tx.fromAddress + tx.toAddress + tx.amount + tx.timestamp;
-    
-    // 3. Sign and return DER Hex
-    return key.sign(hash).toDER('hex');
+    const key = EC.keyFromPrivate(privateKey, 'hex');
+
+    const hashHex = await calculateHash(
+      txData.fromAddress,
+      txData.toAddress,
+      txData.amount,
+      txData.timestamp
+    );
+
+   
+    const signature = key.sign(hashHex).toDER('hex');
+
+    return signature;
   } catch (error) {
+    console.error('Signing error:', error);
     throw new Error('Signing failed: ' + error.message);
   }
 };
-  const handleSubmit = async (e) => {
+
+const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setMessage('');
@@ -90,7 +100,7 @@ const signTransaction = async (tx) => {
         timestamp,
       };
 
-      // Sign the transaction client-side
+    
       const signature = await signTransaction(txData);
 
       const signedTransaction = {
@@ -98,7 +108,7 @@ const signTransaction = async (tx) => {
         signature,
       };
 
-      // Send the full signed object
+    
       await addTransaction(signedTransaction);
 
       setMessage('✓ Transaction added and signed successfully!');

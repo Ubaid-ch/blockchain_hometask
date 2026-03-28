@@ -18,7 +18,7 @@ const Wallet = ({ onWalletGenerated }) => {
       const response = await createWallet();
       console.log('📦 Raw response:', response);
       
-      // Handle different response structures
+      
       let pubKey, privKey;
       
       if (response && response.publicKey && response.privateKey) {
@@ -42,18 +42,17 @@ const Wallet = ({ onWalletGenerated }) => {
         onWalletGenerated(pubKey, privKey);
       }
       
-      // Fetch initial balance
+    
       try {
         const balRes = await fetchBalance(pubKey);
-        // Drill down: axios.data -> backend.data -> balance
-        const actualBalance = balRes.data?.data?.balance ?? 0; 
-        setBalance(actualBalance); 
-      } catch (err) {
+        setBalance(balRes?.balance ?? 0);
+      } catch {
         setBalance(0);
       }
-      
+
+
     } catch (err) {
-      console.error('❌ Wallet generation error:', err);
+      console.error(' Wallet generation error:', err);
       console.error('Error response:', err.response?.data);
       setError(err.response?.data?.message || err.message || 'Failed to generate wallet. Please try again.');
     } finally {
@@ -67,7 +66,8 @@ const Wallet = ({ onWalletGenerated }) => {
         interval = setInterval(async () => {
           try {
             const balRes = await fetchBalance(publicKey);
-            const actualBalance = balRes.data?.data?.balance ?? 0;
+            const actualBalance = balRes?.balance ?? 0;
+
             setBalance(actualBalance);
           } catch (err) {
             console.error('Balance fetch error:', err);

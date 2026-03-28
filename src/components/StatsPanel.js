@@ -1,7 +1,7 @@
 import React from 'react';
 import './StatsPanel.css';
 
-const StatsPanel = ({ stats, onMine }) => {
+const StatsPanel = ({ stats, onMine, isMining }) => {
   if (!stats) return null;
 
   return (
@@ -37,11 +37,12 @@ const StatsPanel = ({ stats, onMine }) => {
         </div>
       </div>
       
-      <button className="mine-button" onClick={onMine}>
-        ⛏️ Mine Block
+      <button className="mine-button" onClick={onMine} disabled={isMining}>
+        {isMining ? '⏳ Mining...' : '⛏️ Mine Block'}
       </button>
     </div>
   );
 };
 
 export default StatsPanel;
+

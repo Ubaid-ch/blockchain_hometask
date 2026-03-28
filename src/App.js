@@ -5,31 +5,33 @@ import BlockchainViewer from './components/BlockchainViewer';
 import TransactionForm from './components/TransactionForm';
 import StatsPanel from './components/StatsPanel';
 import Header from './components/Header';
-import Wallet from './components/Wallet'; // Import Wallet component
+import Wallet from './components/Wallet';
 
 import useBlockchain from './hooks/useBlockchain';
 import { mineBlock } from './api/blockchain.api';
 
 function App() {
   const { chain, stats, loading, error, refresh } = useBlockchain();
-  
-  // State for wallet keys - these should be managed at App level
+
+  // State for wallet keys — managed at App level so TransactionForm can sign
   const [privateKey, setPrivateKey] = React.useState(null);
-  const [publicKey, setPublicKey] = React.useState(null);
+  const [publicKey, setPublicKey]   = React.useState(null);
+  const [isMining, setIsMining]     = React.useState(false);
 
   const handleMine = async () => {
+    if (isMining) return; // prevent double-clicks
+    setIsMining(true);
     try {
       await mineBlock();
-      await refresh();
+      await refresh(); // fetch updated chain + stats — also clears any poll error
     } catch (err) {
       console.error('Mining failed:', err.message);
+    } finally {
+      setIsMining(false);
     }
   };
 
-  // Function to refresh data after transaction
-  const refreshData = () => {
-    refresh();
-  };
+  const refreshData = () => { refresh(); };
 
   if (loading) {
     return (
@@ -40,29 +42,34 @@ function App() {
     );
   }
 
+  // Suppress transient poll errors while a mine is in flight — the event-loop
+  // yield (setImmediate in mineBlock) allows polls to be served, but a race
+  // could still produce a brief error before mining completes.
+  const displayError = isMining ? null : error;
+
   return (
     <div className="App">
       <Header />
       <div className="app-container">
-        {error && (
+        {displayError && (
           <div className="error-banner">
-            <p>{error}</p>
+            <p>{displayError}</p>
           </div>
         )}
 
         <div className="main-content">
           <div className="left-panel">
-            <StatsPanel stats={stats} onMine={handleMine} />
-            <Wallet 
+            <StatsPanel stats={stats} onMine={handleMine} isMining={isMining} />
+            <Wallet
               onWalletGenerated={(pubKey, privKey) => {
                 setPublicKey(pubKey);
                 setPrivateKey(privKey);
               }}
             />
-            <TransactionForm 
-              privateKey={privateKey} 
-              publicKey={publicKey} 
-              onTransactionAdded={refreshData} 
+            <TransactionForm
+              privateKey={privateKey}
+              publicKey={publicKey}
+              onTransactionAdded={refreshData}
             />
           </div>
 
@@ -75,4 +82,4 @@ function App() {
   );
 }
 
-export default App;
+export default App;

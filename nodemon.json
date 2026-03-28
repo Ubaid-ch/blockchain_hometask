@@ -1,0 +1,6 @@
+{
+  "watch": ["*.js", "config", "controllers", "middleware", "models", "routes", "services", "utils"],
+  "ext": "js,json",
+  "ignore": ["blockchain.json", "src/**", "node_modules/**", "build/**"],
+  "delay": 0
+}

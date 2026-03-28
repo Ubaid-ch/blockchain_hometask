@@ -23,13 +23,21 @@ class Block {
       .digest('hex');
   }
 
+ 
   mineBlock(difficulty) {
     const target = Array(difficulty + 1).join('0');
-
-    while (this.hash.substring(0, difficulty) !== target) {
-      this.nonce++;
-      this.hash = this.calculateHash();
-    }
+    return new Promise((resolve) => {
+      const attempt = () => {
+        if (this.hash.substring(0, difficulty) !== target) {
+          this.nonce++;
+          this.hash = this.calculateHash();
+          setImmediate(attempt); 
+        } else {
+          resolve();
+        }
+      };
+      attempt();
+    });
   }
 
   hasValidTransactions() {
@@ -54,7 +62,7 @@ class Transaction {
   calculateHash() {
     return crypto
       .createHash('sha256')
-      .update(this.fromAddress + this.toAddress + this.amount + this.timestamp)
+      .update(this.fromAddress + this.toAddress + Number(this.amount) + this.timestamp)
       .digest('hex');
   }
 
@@ -69,14 +77,14 @@ class Transaction {
   }
 
  isValid() {
-    if (this.fromAddress === null) return true; // Mining reward
+    if (this.fromAddress === null) return true; 
 
     if (!this.signature || this.signature.length === 0) {
       return false;
     }
 
     try {
-      // Import the hex public key (which is the fromAddress)
+     
       const key = ec.keyFromPublic(this.fromAddress, 'hex');
       return key.verify(this.calculateHash(), this.signature);
     } catch (err) {
@@ -103,7 +111,7 @@ class Blockchain {
     return this.chain[this.chain.length - 1];
   }
 
-  minePendingTransactions(miningRewardAddress) {
+  async minePendingTransactions(miningRewardAddress) {
     const rewardTx = new Transaction(null, miningRewardAddress, this.miningReward);
     this.pendingTransactions.push(rewardTx);
 
@@ -112,7 +120,7 @@ class Blockchain {
       this.pendingTransactions,
       this.getLatestBlock().hash
     );
-    block.mineBlock(this.difficulty);
+    await block.mineBlock(this.difficulty);
 
     this.chain.push(block);
     this.pendingTransactions = [];

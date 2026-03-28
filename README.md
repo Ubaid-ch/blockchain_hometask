@@ -39,14 +39,19 @@ hometask-blockchain/
 │   ├── mining.routes.js          # /api/mine
 │   ├── balance.routes.js         # /api/balance
 │   ├── stats.routes.js           # /api/stats
-│   └── health.routes.js          # /health (no rate limit)
+│   ├── health.routes.js          # /health (no rate limit)
+│   └── wallet.routes.js          # NEW — /api/wallets (Task 1)
 │
 ├── controllers/
 │   ├── blockchain.controller.js
-│   ├── transaction.controller.js
-│   ├── mining.controller.js
+│   ├── transaction.controller.js  # + persist.save() after addTransaction (Task 2)
+│   ├── mining.controller.js       # + persist.save() after mine (Task 2)
 │   ├── balance.controller.js
-│   └── stats.controller.js
+│   ├── stats.controller.js
+│   └── wallet.controller.js       # NEW — POST /api/wallets (Task 1)
+│
+├── services/
+│   └── persistence.service.js     # NEW — save / load / clear (Task 2)
 │
 ├── src/                          # React frontend
 │   ├── api/
@@ -63,9 +68,10 @@ hometask-blockchain/
 │   │   └── index.js              # POLL_INTERVAL_MS, DEFAULT_MINER_ADDRESS, enums
 │   ├── components/
 │   │   ├── BlockchainViewer.js
-│   │   ├── TransactionForm.js
+│   │   ├── TransactionForm.js    # Signs tx client-side before submit (Task 1)
 │   │   ├── StatsPanel.js
 │   │   ├── Header.js
+│   │   ├── Wallet.js             # NEW — generate wallet, display balance (Task 1)
 │   │   └── ErrorBoundary.js      # React class error boundary
 │   ├── App.js
 │   └── index.js
@@ -236,6 +242,88 @@ PORT=3003 npm run dev
 
 ---
 
+## Changes
+
+### Task 1 — Cryptographic Wallet System
+
+Replaced plain-string addresses with a real secp256k1 cryptographic wallet system.
+
+#### Backend
+
+| File | What changed |
+|---|---|
+| `models/blockchain.js` | `Transaction.signTransaction(signingKey)` signs the transaction hash using an **elliptic** secp256k1 key pair. `Transaction.isValid()` fully verifies the DER-encoded signature against the public key (the `return true` bypass is removed). `Blockchain.addTransaction()` now rejects any unsigned transaction via `isValid()`. |
+| `controllers/wallet.controller.js` | **New** — `POST /api/wallets` generates a secp256k1 key pair via the `elliptic` library and returns `{ publicKey, privateKey }` as hex strings. CommonJS syntax, follows the existing `routes/ → controllers/` pattern, uses `sendSuccess` / `sendError`. |
+| `routes/wallet.routes.js` | **New** — mounts `generateWallet` at `POST /`. |
+| `routes/index.js` | Registers `/api/wallets` route. |
+| `models/index.js` | Demo-data seeding now uses `elliptic` key pairs (matching `signTransaction`). Transactions are signed before being added to the chain. |
+
+#### Frontend
+
+| File | What changed |
+|---|---|
+| `src/components/Wallet.js` | Calls `POST /api/wallets`, displays the public key (wallet address) and live balance (polled every 5 s), and stores the private key in local component state only — never sent back to the server. Fixed balance response access to match the axios interceptor unwrapping. |
+| `src/components/TransactionForm.js` | Signs transactions client-side with the wallet's private key using **elliptic** secp256k1 + Web Crypto SHA-256, then submits the full signed payload `{ fromAddress, toAddress, amount, timestamp, signature }`. |
+| `src/api/blockchain.api.js` | Added `createWallet()` call. |
+| `src/api/endpoints.js` | Added `WALLET` endpoint constant. |
+
+#### New API endpoint
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `POST` | `/api/wallets` | None | Returns `{ publicKey, privateKey }` — both hex strings (secp256k1). |
+
+---
+
+### Task 2 — Blockchain Persistence
+
+Blockchain state (chain + pending transactions) now survives server restarts.
+
+#### New files
+
+| File | Purpose |
+|---|---|
+| `services/persistence.service.js` | `save(blockchain)` — serialises chain + pending pool to `blockchain.json`. `load()` — deserialises and rehydrates full class instances; returns `null` on any error. `clear()` — deletes the file (useful in tests). All I/O errors are caught; the server never crashes. |
+
+#### Modified files
+
+| File | What changed |
+|---|---|
+| `models/index.js` | On startup calls `persist.load()`. If a valid saved state is found **and** passes `isChainValid()`, the chain is restored. Otherwise falls back to seeding fresh demo data. |
+| `controllers/mining.controller.js` | Calls `persist.save()` after every successful mine. |
+| `controllers/transaction.controller.js` | Calls `persist.save()` after every new transaction is added to the pending pool. |
+| `.gitignore` | Added `blockchain.json` (persisted state has no place in source control). |
+
+#### Storage format
+
+`blockchain.json` at the project root:
+
+```json
+{
+  "savedAt": "<ISO-8601 timestamp>",
+  "difficulty": 2,
+  "miningReward": 100,
+  "chain": [ /* Block objects */ ],
+  "pendingTransactions": [ /* Transaction objects */ ]
+}
+```
+
+#### No new environment variables
+
+Persistence is always enabled. To start with a clean chain, delete `blockchain.json` and restart the server.
+
+---
+
+### Known Limitations & Trade-offs
+
+- **IIFE async init in `models/index.js`**: Loading the saved state is async but `require()` is synchronous. The IIFE fires a micro-task that completes before Express starts serving requests in practice, but a cleaner solution would be to make server startup itself async (e.g., call `loadSavedState()` in `server.js` before `app.listen()`). Kept simple to avoid touching `server.js`.
+- **Private key returned once**: The `/api/wallets` endpoint returns the private key in plain JSON. In production this should be done over HTTPS only, and the key should ideally never leave the client (generated in-browser). Acceptable for this assessment context.
+- **No write queue**: `persist.save()` does not coalesce rapid sequential saves; under very high transaction throughput this could result in many concurrent writes. A debounce or write-lock would be appropriate in a production system.
+- **secp256k1 via `elliptic`**: Node.js 15+ supports `secp256k1` natively via `crypto.generateKeyPairSync`. The `elliptic` library is used here for consistency (the frontend also uses it for signing) and broader Node version compatibility.
+
+---
+
 ## License
 
 MIT — for learning and assessment purposes.
+
